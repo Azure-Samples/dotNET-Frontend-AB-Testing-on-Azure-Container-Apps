@@ -14,9 +14,9 @@ This exercise will introduce you to a variety of concepts, with links to support
 * [GitHub Actions](https://github.com/features/actions) for creating CI/CD workflows to deploy your apps to Azure.
 * [Azure Container Registry](https://docs.microsoft.com/azure/container-registry/)
 * [Azure Bicep](https://docs.microsoft.com/azure/azure-resource-manager/bicep/overview?tabs=**bicep**) for creating and configuring Azure resources.
-* Azure App Configuration for setting up feature flags to control the A/B test variance.
-* Kusto for building custom queries against the events your A/B tests generate.
-* ASP.NET Core feature flags, useful for when you want to test new features or bifurcate functionality for A/B tests.
+* [Azure App Configuration](https://docs.microsoft.com/azure/azure-app-configuration/overview) for setting up feature flags to control the A/B test variance.
+* [Kusto](https://docs.microsoft.com/azure/data-explorer/kusto/query/) for building custom queries against the events your A/B tests generate.
+* [ASP.NET Core feature flags](https://docs.microsoft.com/azure/azure-app-configuration/use-feature-flags-dotnet-core?tabs=core5x), useful for when you want to test new features or bifurcate functionality for A/B tests.
 
 ## Prerequisites
 
@@ -24,15 +24,14 @@ You'll need an Azure subscription and a very small set of tools and skills to ge
 
 1. An Azure subscription. Sign up [for free](https://azure.microsoft.com/free/).
 2. A GitHub account, with access to GitHub Actions.
-3. Either the [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) installed locally, or, access to [GitHub Codespaces](https://github.com/features/codespaces), which would enable you to do develop in your browser.
 
 ## Topology diagram
 
-IMG TBD
+![Application topology map.](docs/media/topology.png)
 
 ## Setup
 
-By the end of this section you'll have a 3-node app running in Azure. This setup process consists of two steps, and should take you around 15 minutes. 
+By the end of this process you'll have a 2-container app running in Azure Container Apps, with a few supporting resources and an App Configuration instance, which you can use to bifurcate feature settings by revision labels. 
 
 > Note: Remember to clean up or scale back your resources to save on compute costs. 
 
@@ -76,15 +75,15 @@ az ad sp create-for-rbac --sdk-auth --name FeatureFlagsSample --role contributor
 
 The easiest way to deploy the code is to make a commit directly to the `deploy` branch. Do this by navigating to the `deploy.yml` file in your browser and clicking the `Edit` button. 
 
-IMG TBD
+![Editing the deploy file.](docs/media/edit-deploy.png)
 
 Provide a custom resource group name for the app, and then commit the change to a new branch named `deploy`. 
 
-IMG TBD
+![Pushing a change to the deploy branch to trigger a build.](docs/media/edited-file.png)
 
 Once you click the `Propose changes` button, you'll be in "create a pull request" mode. Don't worry about creating the pull request yet, just click on the `Actions` tab, and you'll see that the deployment CI/CD process has already started. 
 
-IMG TBD
+![CI/CD process beginning.](docs/media/build-started.png)
 
 When you click into the workflow, you'll see that there are 3 phases the CI/CD will run through:
 
@@ -92,39 +91,129 @@ When you click into the workflow, you'll see that there are 3 phases the CI/CD w
 2. build - the various .NET projects are build into containers and published into the Azure Container Registry instance created during provision.
 3. deploy - once `build` completes, the images are in ACR, so the Azure Container Apps are updated to host the newly-published container images. 
 
-IMG TBD
-
-After a few minutes, all three steps in the workflow will be completed, and each box in the workflow diagram will reflect success. If anything fails, you can click into the individual process step to see the detailed log output. 
+![CI/CD process running.](docs/media/build-running.png)After a few minutes, all three steps in the workflow will be completed, and each box in the workflow diagram will reflect success. If anything fails, you can click into the individual process step to see the detailed log output. 
 
 > Note: if you do see any failures or issues, please submit an Issue so we can update the sample. Likewise, if you have ideas that could make it better, feel free to submit a pull request.
 
-IMG TBD
+![CI/CD process succeeded.](docs/media/all-green.png)
 
 With the projects deployed to Azure, you can now test the app to make sure it works. 
 
 ## Quick look at the code
 
-TBD
+This code is the result of the [Add feature flags to an ASP.NET Core](https://docs.microsoft.com/azure/azure-app-configuration/quickstart-feature-flag-aspnet-core?tabs=core6x%2Ccore5x) app article, which goes a bit more in-depth into the features of Azure App Configuration, so do check those resources out for more information later. For now, take note that there's one change in this repository's code from the original sample code. In `BetaController`, the code from the original sample uses the `FeatureGate` attribute to disable a controller's action in the case that the feature is disabled. In this repository's code, that attribute has been commented out. 
+
+```csharp
+public class BetaController : Controller
+{
+    private readonly IFeatureManager _featureManager;
+    private readonly TelemetryClient _telemetryClient;
+
+    public BetaController(IFeatureManagerSnapshot featureManager, TelemetryClient telemetryClient)
+    {
+        _featureManager = featureManager;
+        _telemetryClient = telemetryClient;
+    }
+
+    //[FeatureGate(MyFeatureFlags.Beta)]
+    public IActionResult Index()
+    {
+        _telemetryClient.TrackEvent("Beta Page Loaded");
+        return View();
+    }
+}
+```
+
+This particular A/B test will be testing the percentage of times the additional navigation link is clicked when it is shown; if the `FeatureGate` attribute is left in, subsequent requests to the `/beta/index` endpoint might 404. Additionally, we've added application insights custom event tracking to the `Index` controller method. This way, each hit to the URL will be tracked with a custom Application Insights event. There's a corresponding Application Insights event in the `_Layout.cshtml` view:
+
+```csharp
+<feature name="Beta">
+    <li class="nav-item">
+        @{
+        _telemetryClient.TrackEvent("Beta Menu Shown");
+    }
+<a class="nav-link text-dark" asp-area="" asp-controller="Beta" asp-action="Index">Beta</a>
+    </li>
+    </feature>
+```
+
+This razor code will also fire an event each time the beta menu item is shown. This way, we know how many opportunities users have to click the link, *and* how many times they actually do click the link and result in a hit on the `beta/index` controller code. 
+
+### Mapping configuration to feature enablement
+
+We know the .NET code will be deployed as a container artifact, so the best presumption we can make that we'll have to customize the deployment and to enable or disable features is environment variables. Since top-level string variables in `appsettings.json` easily map to environment variables you can set on an Azure Container App using either Bicep, the Azure CLI, Visual Studio, or the Azure Portal, the code has a `RevisionLabel` variable that maps to an Azure App Configuration feature flag. 
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ApplicationMapNodeName": "Frontend",
+  "AllowedHosts": "*",
+  "RevisionLabel": "BetaDisabled"
+}
+```
+
+In the Azure App Configuration blade, however, you'll see that the `RevisionLabel` associated with the feature's <u>enablement</u> is `BetaEnabled`, not `BetaDisabled`, which is the default in the code. 
+
+> The idea here is that you need to *enable* the feature specifically. Any value in the configuration or environment variable <u>other than</u> `BetaEnabled` will result in the Beta menu item being invisible. 
+
+![The label that enables the beta feature in Azure App Configuration.](docs/media/app-config.png)
 
 ## Try the app in Azure
 
 The `deploy` CI/CD process creates a series of resources in your Azure subscription. These are used primarily for hosting the project code, but there's also a few additional resources that aid with monitoring and observing how the app is running in the deployed environment. 
 
-| Resource         | Resource Type             | Purpose                                                      |
-| ---------------- | ------------------------- | ------------------------------------------------------------ |
+| Resource          | Resource Type                    | Purpose                                                      |
+| ----------------- | -------------------------------- | ------------------------------------------------------------ |
+| appconfig`suffix` | App Configuration                | Provides distributed configurability for your cloud-native apps, and enables feature flagging and enablement. |
+| `prefix`ai        | Application Insights             | Enables telemetry and inside-out analysis of your application, provides views on custom events you fire during the application's execution, exception telemetry. |
+| frontend          | Azure Container App              | Houses the .NET Blazor Server app representing the frontend of the app. |
+| `prefix`env       | Azure Container Apps Environment | A compute environment in which your application's containers can run and communicate with one another internally. |
+| `precix`acr       | Azure Container Registry         | Where your container images are stored and deployed from whenever you create a new container app or container app revision. |
+| `prefix`logs      | Log Analytics Workspace          | All `ILogger<T>` data you log within the application ends up being stored in this space, as well as system and console data emitted by the container images. |
 
-TBD
+Once the application code is deployed, the Azure resource group into which it is deployed looks something like this. 
+
+![Azure resources once the CI/CD process is complete.](docs/media/feature-flags-resources.png)
 
 ## Add a revision that enables the Beta feature
 
-TBD
+From looking at the code, you know that setting the `RevisionLabel` environment variable (or app setting) to `BetaEnabled` results in the beta menu feature being activated. Now, you'll create a new Azure Container App revision, and split traffic between the two revisions so you can track how many requests you have to the new feature once customers are given an opportunity to see the new feature. After the deployment, going to the `frontend` resource in the portal, you'll see 2 revisions, one of which is active. 
+
+![Initial revision map.](docs/media/starting-revisions.png)
+
+The one receiving 0% of the traffic is the original image - the ACA Welcome Image - that's deployed when the container apps are first created. You can uncheck that one and save it, resulting in there being 1 active revision. The one receiving 100% of the traffic is our actual app's image. 
+
+Click the `Create new revision` button, and create a new revision. But this time, change the `RevisionLabel` value to be `BetaEnabled` instead of the default. Also, it'd be a good idea to give this new revision a logical suffix name. This way you know this is the one with the feature flag turned `on`. 
+
+![Create a new revision.](docs/media/create-revision.png)
+
+Click the `Create` button to create the revision. A few moments later it will complete deployment. 
+
+![New revision.](docs/media/new-revision.png)
+
+Now, about half of the requests to the app result in an additional menu item being displayed. 
+
+![Request-by-request variation in the UX.](docs/media/ab-test.png)
 
 ## Monitoring
 
-Look at the custom events, then write a customized query. 
+As site visitors are shown the beta menu item, events are recorded, and when the page resulting on their click is loaded, a separate event is recorded. Since each event is recorded individually by Application Insights, you have a snapshot of the distribution of opportunities to how many successful requests are made as a result of the menu item. 
+
+![Default events snapshot.](docs/media/default-snapshot.png)
+
+From the screenshot you'll see how clicking the ellipse results in being able to customize the query. A rather complex Kusto query is shown next, but you can distil the query down to whatever minute level of detail you're after, or even use Kusto's chart-rendering capabilities to show the opportunity-versus-success telemetry for the A/B test. 
+
+![feature-flags-logs](C:\Users\brady\OneDrive\Desktop\feature-flags-logs.png)
 
 ## Summary
 
-TBD
+This sample shows you how you can couple the awesome programmatic features and extensions to ASP.NET Core that make it a fantastic option for building cloud-native apps, that are easy to monitor and perform automated deployments of whenever changes arise. We hope this sample provides you some visibility into how you can couple various Azure services together with .NET to gradually ease in features with careful A/B testing and analysis using existing tools and APIs. 
 
 > Note: Remember to clean up or scale back your resources to save on compute costs. 
+
+Happy coding!
