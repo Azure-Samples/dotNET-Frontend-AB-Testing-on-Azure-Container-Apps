@@ -208,7 +208,7 @@ As site visitors are shown the beta menu item, events are recorded, and when the
 
 From the screenshot you'll see how clicking the ellipse results in being able to customize the query. A rather complex Kusto query is shown next, but you can distil the query down to whatever minute level of detail you're after, or even use Kusto's chart-rendering capabilities to show the opportunity-versus-success telemetry for the A/B test. 
 
-![feature-flags-logs](C:\Users\brady\OneDrive\Desktop\feature-flags-logs.png)
+![feature-flags-logs](docs/media/feature-flags-logs.png)
 
 ## Summary
 
