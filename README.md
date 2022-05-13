@@ -173,7 +173,7 @@ The `deploy` CI/CD process creates a series of resources in your Azure subscript
 | `prefix`ai        | Application Insights             | Enables telemetry and inside-out analysis of your application, provides views on custom events you fire during the application's execution, exception telemetry. |
 | frontend          | Azure Container App              | Houses the .NET Blazor Server app representing the frontend of the app. |
 | `prefix`env       | Azure Container Apps Environment | A compute environment in which your application's containers can run and communicate with one another internally. |
-| `precix`acr       | Azure Container Registry         | Where your container images are stored and deployed from whenever you create a new container app or container app revision. |
+| `prefix`acr       | Azure Container Registry         | Where your container images are stored and deployed from whenever you create a new container app or container app revision. |
 | `prefix`logs      | Log Analytics Workspace          | All `ILogger<T>` data you log within the application ends up being stored in this space, as well as system and console data emitted by the container images. |
 
 Once the application code is deployed, the Azure resource group into which it is deployed looks something like this. 
