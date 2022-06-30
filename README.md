@@ -44,7 +44,7 @@ By the end of this process you'll have a 2-container app running in Azure Contai
 2. Create an Azure Service Principal using the Azure CLI. 
 
 ```bash
-$subscriptionId=$(az account show --query id --output tsv)
+subscriptionId=$(az account show --query id --output tsv)
 az ad sp create-for-rbac --sdk-auth --name FeatureFlagsSample --role contributor --scopes /subscriptions/$subscriptionId
 ```
 
