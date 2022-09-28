@@ -1,0 +1,31 @@
+#!/bin/bash
+if [ $# -ne 3 ]; then
+    echo $0 appName githubOrg repo
+    echo $0 FeatureFlagsSample dharvey-adv360 dotNET-Frontend-AB-Testing-on-Azure-Container-Apps
+    exit 1
+fi
+
+subscriptionId=$(az account show --query id --output tsv)
+# update
+appName=$1
+organization=$2
+repo=$3
+
+# create SP with role allowing access to subscription
+read appId ApplicationObjectId  < <( echo $(az ad app create --display-name $appName | jq -r '[.appId, .id] | @tsv' ))
+
+read assigneeObjectId tenantId < <( echo $(az ad sp create --id $appId | jq -r '[.id, .appOwnerOrganizationId] | @tsv' ))
+
+
+
+az role assignment create --role contributor --subscription $subscriptionId --assignee-object-id  $assigneeObjectId --assignee-principal-type ServicePrincipal --scope /subscriptions/$subscriptionId 
+echo AZURE_CLIENT_ID=$appId
+echo AZURE_SUBSCRIPTION_ID=$subscriptionId
+echo AZURE_TENANT_ID=$tenantId
+
+# Allow github branches to login to Azure
+#branch=main
+#az rest --method POST --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials" --body '{"name":"'${appName}${branch}'","issuer":"https://token.actions.githubusercontent.com","subject":"repo:${organization}/$(repository):ref:refs/heads/'$branch'","description":"Testing","audiences":["api://AzureADTokenExchange"]}'
+branch=deploy
+az rest --method POST --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials" --body '{"name":"'${appName}${branch}'","issuer":"https://token.actions.githubusercontent.com","subject":"repo:${organization}/$(repository):ref:refs/heads/'$branch'","description":"Testing","audiences":["api://AzureADTokenExchange"]}'
+az rest --method GET --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials"

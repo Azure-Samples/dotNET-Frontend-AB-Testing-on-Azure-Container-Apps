@@ -1,0 +1,26 @@
+#!/bin/bash
+if [ $# -ne 3 ]; then
+    echo $0 appName githubOrg repo
+    echo $0 FeatureFlagsSample dharvey-adv360 dotNET-Frontend-AB-Testing-on-Azure-Container-Apps
+    exit 1
+fi
+subscriptionId=$(az account show --query id --output tsv)
+# update
+appName=$1
+
+read appId ApplicationObjectId  < <( echo $(az ad app list --display-name $appName | jq -r '[.[].appId, .[].id] | @tsv' ))
+
+read assigneeObjectId tenantId < <( echo $(az ad sp list  --display-name $appName | jq -r '[.[].id, .[].appOwnerOrganizationId] | @tsv' ))
+
+az rest --method GET --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials"
+# remove
+#branch=main;
+#az rest --method DELETE --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials/${credentialName}${branch}"
+branch=deploy;
+az rest --method DELETE --uri "https://graph.microsoft.com/betacat ra./applications/${ApplicationObjectId}/federatedIdentityCredentials/${credentialName}${branch}"
+
+
+az role assignment delete --assignee $assigneeObjectId --scope /subscriptions/$subscriptionId --role contributor
+
+az ad sp delete --id $assigneeObjectId
+az ad app delete --id $appId

@@ -46,7 +46,54 @@ By the end of this process you'll have a 2-container app running in Azure Contai
 ```bash
 $subscriptionId=$(az account show --query id --output tsv)
 az ad sp create-for-rbac --sdk-auth --name FeatureFlagsSample --role contributor --scopes /subscriptions/$subscriptionId
+DH: 
+
+# https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-cli%2Clinux#code-try-0
+
+az login  (select advisor360test)
+az account set --subscription 8b308087-ea81-4958-b3be-c9360a994c53
+subscriptionId=$(az account show --query id --output tsv)
+# update
+appName=FeatureFlagsSample
+resourceGroupName=FeatureFlagsSample
+credentialName=FeatureFlagsSample
+organization=dharvey-adv360
+repo=dotNET-Frontend-AB-Testing-on-Azure-Container-Apps
+
+# create SP with role allowing access to subscription
+az ad app create --display-name $appName > app.json
+appId=$(jq -r ".appId" app.json)
+ApplicationObjectId=$(jq -r ".id" app.json)
+
+az ad sp create --id $appId > sp.json
+assigneeObjectId=$(jq -r ".id" sp.json)
+tenantId=$(jq -r ".appOwnerOrganizationId" sp.json)
+az group create  --name $resourceGroupName -l eastus
+
+az role assignment create --role contributor --subscription $subscriptionId --assignee-object-id  $assigneeObjectId --assignee-principal-type ServicePrincipal --scope /subscriptions/$subscriptionId  > ra.json
+echo AZURE_CLIENT_ID=$appId
+echo AZURE_SUBSCRIPTION_ID=$subscriptionId
+echo AZURE_TENANT_ID=$tenantId
+
+# Allow github branches to login to Azure
+branch=main
+az rest --method POST --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials" --body '{"name":"'${credentialName}${branch}'","issuer":"https://token.actions.githubusercontent.com","subject":"repo:${organization}/$(repository):ref:refs/heads/'$branch'","description":"Testing","audiences":["api://AzureADTokenExchange"]}'
+branch=deploy
+az rest --method POST --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials" --body '{"name":"'${credentialName}${branch}'","issuer":"https://token.actions.githubusercontent.com","subject":"repo:${organization}/$(repository):ref:refs/heads/'$branch'","description":"Testing","audiences":["api://AzureADTokenExchange"]}'
+az rest --method GET --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials"
+
+
+# remove
+branch=main;
+az rest --method DELETE --uri "https://graph.microsoft.com/beta/applications/${ApplicationObjectId}/federatedIdentityCredentials/${credentialName}${branch}"
+branch=deploy;
+az rest --method DELETE --uri "https://graph.microsoft.com/betacat ra./applications/${ApplicationObjectId}/federatedIdentityCredentials/${credentialName}${branch}"
+
+az role assignment delete --subscription $subscriptionId  .....
+
+
 ```
+
 
 3. Copy the JSON written to the screen to your clipboard. 
 
