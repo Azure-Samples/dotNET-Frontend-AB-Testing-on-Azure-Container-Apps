@@ -57,7 +57,7 @@ az ad sp create-for-rbac --sdk-auth --name FeatureFlagsSample --role contributor
   "subscriptionId": "",
   "tenantId": "",
   "activeDirectoryEndpointUrl": "https://login.microsoftonline.com/",
-  "resourceManagerEndpointUrl": "https://brazilus.management.azure.com",
+  "resourceManagerEndpointUrl": "https://management.azure.com",
   "activeDirectoryGraphResourceId": "https://graph.windows.net/",
   "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
   "galleryEndpointUrl": "https://gallery.azure.com",
